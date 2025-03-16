@@ -1,0 +1,4 @@
+.ipynb_checkpoints/
+__pycache__/
+*.pyc
+/data/  # 忽略数据文件夹（如需保留数据，请删除此行）
