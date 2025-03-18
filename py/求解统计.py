@@ -132,7 +132,7 @@ def analyze_nonogram_results(
 if __name__ == "__main__":
     # 示例： 指定输入CSV, 输出多解详情, 并告知存放Nonogram JSON的文件夹 puzzle_dir
     analyze_nonogram_results(
-        csv_file="cp_sat_solver_results_seq.csv",
+        csv_file="1.csv",
         output_multi_csv="multiple_solutions_details.csv",
         puzzle_dir="./mnist_nonograms"
     )

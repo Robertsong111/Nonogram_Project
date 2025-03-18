@@ -167,7 +167,7 @@ if __name__=="__main__":
     # b) 只取前 1000 张示例（你可以调整 num_samples 至 60000）
     bulk_mnist_to_nonogram(
         mnist_dataset=mnist_train,
-        num_samples=3000,
+        num_samples=1000,
         final_size=(20,20),   # 可以根据需要调整输出谜题的格子尺寸
         out_dir="./mnist_nonograms",
         out_img_dir="./mnist_nonograms_images",
