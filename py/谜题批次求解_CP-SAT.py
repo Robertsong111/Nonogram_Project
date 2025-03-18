@@ -190,7 +190,7 @@ def process_and_solve(file_path, time_limit=10.0, max_solutions=1000):
 
 
 def main():
-    folder = "./mnist_nonograms"  # 存放谜题 JSON 的文件夹
+    folder = "./stimulated_annealing_refined_jsons"  # 存放谜题 JSON 的文件夹
     files = [os.path.join(folder, f) for f in os.listdir(folder) if f.lower().endswith(".json")]
     total_files = len(files)
     print(f"总共有 {total_files} 个谜题文件。")
@@ -225,7 +225,7 @@ def main():
         records.append(record)
 
     df = pd.DataFrame(records)
-    output_file = "cp_sat_solver_results_seq.csv"
+    output_file = "1.csv"
     df.to_csv(output_file, index=False)
     print(f"所有结果已保存至 {output_file}")
 
