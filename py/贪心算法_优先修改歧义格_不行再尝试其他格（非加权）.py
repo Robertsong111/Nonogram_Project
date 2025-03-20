@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 ########################################
-# 1. 辅助函数：计算行/列提示
+# 1) 计算行/列提示的辅助函数
 ########################################
 def compute_row_col_hints(grid):
     m = len(grid)
@@ -25,10 +25,10 @@ def compute_row_col_hints(grid):
             if val == 1:
                 count += 1
             else:
-                if count:
+                if count > 0:
                     hints.append(count)
                     count = 0
-        if count:
+        if count > 0:
             hints.append(count)
         row_hints.append(hints)
     col_hints = []
@@ -39,16 +39,16 @@ def compute_row_col_hints(grid):
             if grid[i][j] == 1:
                 count += 1
             else:
-                if count:
+                if count > 0:
                     hints.append(count)
                     count = 0
-        if count:
+        if count > 0:
             hints.append(count)
         col_hints.append(hints)
     return row_hints, col_hints
 
 ########################################
-# 2. CP-SAT 建模：构造 Nonogram 模型
+# 2) 建立 Nonogram 模型（CP-SAT）
 ########################################
 def build_multi_block_cp_model(m, n, row_constraints, col_constraints):
     model = cp_model.CpModel()
@@ -126,7 +126,7 @@ def build_multi_block_cp_model(m, n, row_constraints, col_constraints):
     return model, x
 
 ########################################
-# 3. CP-SAT 解回调：收集所有解（或上限数量）
+# 3) 求解器回调：收集所有解
 ########################################
 class NonogramAllSolutionsCollector(cp_model.CpSolverSolutionCallback):
     def __init__(self, x, max_solutions=1000):
@@ -152,7 +152,7 @@ class NonogramAllSolutionsCollector(cp_model.CpSolverSolutionCallback):
         return self._solutions
 
 ########################################
-# 4. 数解函数：最多统计 1000 个解
+# 4) 数解函数（调用 CP-SAT）
 ########################################
 def count_solutions_up_to_1000(puzzle_data, time_limit=100.0):
     row_hints = puzzle_data.get("row_hints", puzzle_data.get("row_constraints"))
@@ -173,7 +173,7 @@ def count_solutions_up_to_1000(puzzle_data, time_limit=100.0):
     return len(collector.solutions())
 
 ########################################
-# 5. 计算歧义格出现频率
+# 5) 计算歧义格出现频率
 ########################################
 def compute_ambiguous_cells_with_frequency(solutions, original_grid):
     freq = {}
@@ -189,7 +189,7 @@ def compute_ambiguous_cells_with_frequency(solutions, original_grid):
     return freq
 
 ########################################
-# 6. 连通性检测及孤立黑格检测
+# 6) 连通性检测函数及孤立黑格检测
 ########################################
 def count_black_components(grid):
     m = len(grid)
@@ -208,7 +208,7 @@ def count_black_components(grid):
             visited[ci][cj] = True
             for di, dj in [(-1,-1), (-1,0), (-1,1),
                            (0,-1),          (0,1),
-                           (1,-1), (1,0), (1,1)]:
+                           (1,-1),  (1,0),  (1,1)]:
                 stack.append((ci+di, cj+dj))
     count = 0
     for i in range(m):
@@ -227,7 +227,7 @@ def is_isolated_black(grid, i, j):
     n = len(grid[0]) if m > 0 else 0
     directions = [(-1,-1), (-1,0), (-1,1),
                   (0,-1),          (0,1),
-                  (1,-1), (1,0), (1,1)]
+                  (1,-1),  (1,0),  (1,1)]
     for di, dj in directions:
         ni, nj = i+di, j+dj
         if 0 <= ni < m and 0 <= nj < n:
@@ -236,7 +236,7 @@ def is_isolated_black(grid, i, j):
     return True
 
 ########################################
-# 7. 边界判断：判断单独翻转一个格子是否允许
+# 7) 边界判断：判断单独翻转一个格子是否允许
 ########################################
 def allowed_to_flip(original_grid, i, j):
     """
@@ -253,58 +253,25 @@ def allowed_to_flip(original_grid, i, j):
     return True
 
 ########################################
-# 8. 模拟退火微调函数（能量函数中考虑歧义格，遍历候选修改，选择能量最低的候选）
+# 8) 贪心微调函数
 ########################################
-def simulated_annealing_refinement(puzzle_data, max_iterations=1000, time_limit=10.0,
-                                   T0=20.0, cooling_rate=0.99, w1=1.0, w2=0.01, w3=1.0, ambiguity_max_sols=50):
+def greedy_refinement(puzzle_data, max_iterations=1000, time_limit=10.0):
     """
-    利用经典模拟退火对多解谜题进行微调，使谜题达到唯一解，同时保持与原始谜题差异较小。
-    能量函数 E = w1*(sol_count-1)^2 + w2*diff + w3*ambiguity_penalty，其中：
-      - sol_count: 当前谜题的解数
-      - diff: 当前状态与原图的汉明距离
-      - ambiguity_penalty: 当前状态下所有歧义格出现频率之和
-    每次迭代中：
-      1. 随机从邻域中采样一个候选解（即随机选择一个歧义格翻转，且满足连通性要求），
-      2. 计算候选解的能量，并以概率 exp(-ΔE/T) 接受该候选解，
-      3. 降温并重复。
+    基于贪心策略对谜题进行微调：
+      - 利用 SAT 求解器枚举部分解，计算歧义格集合（所有在不同解中与当前状态不一致的格子）；
+      - 随机选择一个歧义格进行翻转（前提是不破坏连通性）；
+      - 如果修改后谜题解数降低，则接受该修改；
+      - 当谜题唯一（解数 == 1）时终止微调。
     """
     original_grid = deepcopy(puzzle_data["grid"])
     current_state = deepcopy(original_grid)
-    # 如果提示不存在，则更新
-    if "row_hints" not in puzzle_data or "col_hints" not in puzzle_data:
-        row_h, col_h = compute_row_col_hints(current_state)
-        puzzle_data["row_hints"] = row_h
-        puzzle_data["col_hints"] = col_h
+    # 更新提示
+    row_hints, col_hints = compute_row_col_hints(current_state)
+    puzzle_data["row_hints"] = row_hints
+    puzzle_data["col_hints"] = col_hints
 
-    # 定义能量函数
-    def energy(state):
-        temp = deepcopy(puzzle_data)
-        temp["grid"] = state
-        temp["row_hints"], temp["col_hints"] = compute_row_col_hints(state)
-        sol_count = count_solutions_up_to_1000(temp, time_limit=time_limit)
-        penalty_sol = (sol_count - 1)**2 if sol_count > 1 else 0
-        diff = sum(sum(1 for a, b in zip(row, orig_row) if a != b)
-                   for row, orig_row in zip(state, original_grid))
-        # 计算歧义惩罚：利用部分解统计当前状态下各格子的歧义频率之和
-        m_val = len(state)
-        n_val = len(state[0])
-        model, x = build_multi_block_cp_model(m_val, n_val, compute_row_col_hints(state)[0], compute_row_col_hints(state)[1])
-        solver = cp_model.CpSolver()
-        solver.parameters.max_time_in_seconds = time_limit
-        collector = NonogramAllSolutionsCollector(x, max_solutions=ambiguity_max_sols)
-        solver.SearchForAllSolutions(model, collector)
-        solutions = collector.solutions()
-        ambiguous = compute_ambiguous_cells_with_frequency(solutions, state)
-        ambiguity_penalty = sum(ambiguous.values())
-        return w1 * penalty_sol + w2 * diff + w3 * ambiguity_penalty
-
-    current_energy = energy(current_state)
-    print(f"初始能量: {current_energy:.2f}")
-    T = T0
     iteration = 0
-
     while iteration < max_iterations:
-        # 检查当前谜题是否唯一
         candidate_puzzle = {
             "grid": current_state,
             "row_hints": compute_row_col_hints(current_state)[0],
@@ -312,17 +279,16 @@ def simulated_annealing_refinement(puzzle_data, max_iterations=1000, time_limit=
         }
         sol_count = count_solutions_up_to_1000(candidate_puzzle, time_limit=time_limit)
         if sol_count == 1:
-            print("唯一解达到，模拟退火微调结束。")
+            print("唯一解达到，贪心微调结束。")
             break
 
-        # 从当前状态的邻域中随机采样一个候选修改
-        # 先利用 CP-SAT 得到部分解，计算当前状态下的歧义格集合
+        # 利用 CP-SAT 求解器枚举部分解，计算当前歧义格集合
         m_val = len(current_state)
         n_val = len(current_state[0])
         model, x = build_multi_block_cp_model(m_val, n_val, puzzle_data["row_hints"], puzzle_data["col_hints"])
         solver = cp_model.CpSolver()
         solver.parameters.max_time_in_seconds = time_limit
-        collector = NonogramAllSolutionsCollector(x, max_solutions=ambiguity_max_sols)
+        collector = NonogramAllSolutionsCollector(x, max_solutions=50)
         solver.SearchForAllSolutions(model, collector)
         solutions = collector.solutions()
         ambiguous_cells = []
@@ -332,26 +298,27 @@ def simulated_annealing_refinement(puzzle_data, max_iterations=1000, time_limit=
                     if sol[i][j] != current_state[i][j]:
                         ambiguous_cells.append((i, j))
         if not ambiguous_cells:
-            print("当前未检测到歧义格，模拟退火提前结束。")
+            print("当前未检测到歧义格，贪心微调提前结束。")
             break
 
-        # 随机采样一个候选格（经典模拟退火：只随机采样一个）
-        i_sel, j_sel = random.choice(ambiguous_cells)
+        # 从所有歧义格中随机选择一个
+        i, j = random.choice(ambiguous_cells)
 
-        # 检查是否允许翻转
-        if not allowed_to_flip(current_state, i_sel, j_sel):
+        if not allowed_to_flip(current_state, i, j):
+            print(f"格子 ({i},{j}) 不允许翻转（破坏连通性），跳过。")
             iteration += 1
             continue
 
+        # 构造候选状态：翻转所选格子
         candidate_state = deepcopy(current_state)
-        candidate_state[i_sel][j_sel] = 1 - candidate_state[i_sel][j_sel]
+        candidate_state[i][j] = 1 - candidate_state[i][j]
 
-        # 连通性检查：确保翻转后不会破坏连通性
-        if candidate_state[i_sel][j_sel] == 1:
+        # 检查连通性：确保翻转后不会增加黑色或白色连通分量
+        if candidate_state[i][j] == 1:
             if count_white_components(candidate_state) > count_white_components(current_state):
                 iteration += 1
                 continue
-            if is_isolated_black(candidate_state, i_sel, j_sel):
+            if is_isolated_black(candidate_state, i, j):
                 iteration += 1
                 continue
         else:
@@ -360,35 +327,27 @@ def simulated_annealing_refinement(puzzle_data, max_iterations=1000, time_limit=
                 iteration += 1
                 continue
 
-        cand_energy = energy(candidate_state)
-        delta_E = cand_energy - current_energy
-
-        # 经典模拟退火接受规则：如果能量降低则接受；否则以概率 exp(-ΔE/T) 接受
-        if delta_E < 0 or random.random() < math.exp(-delta_E / T):
+        new_puzzle = {
+            "grid": candidate_state,
+            "row_hints": compute_row_col_hints(candidate_state)[0],
+            "col_hints": compute_row_col_hints(candidate_state)[1]
+        }
+        new_sol_count = count_solutions_up_to_1000(new_puzzle, time_limit=time_limit)
+        if new_sol_count < sol_count:
+            print(f"Iteration {iteration}: 翻转格子 ({i},{j}) 后，解数从 {sol_count} 降至 {new_sol_count}")
             current_state = candidate_state
-            current_energy = cand_energy
-            print(f"Iteration {iteration}: 翻转格子 ({i_sel},{j_sel}) 被接受，当前能量 {current_energy:.2f}")
-            candidate_puzzle = {"grid": current_state,
-                                "row_hints": compute_row_col_hints(current_state)[0],
-                                "col_hints": compute_row_col_hints(current_state)[1]}
-            if count_solutions_up_to_1000(candidate_puzzle, time_limit=time_limit) == 1:
-                print("唯一解达到，结束模拟退火微调。")
-                break
+            row_hints, col_hints = compute_row_col_hints(current_state)
+            puzzle_data["row_hints"] = row_hints
+            puzzle_data["col_hints"] = col_hints
         else:
-            print(f"Iteration {iteration}: 翻转格子 ({i_sel},{j_sel}) 被拒绝（ΔE = {delta_E:.2f}）。")
-
-        T *= cooling_rate
+            print(f"Iteration {iteration}: 翻转格子 ({i},{j}) 后解数未降低（{sol_count} -> {new_sol_count}）")
         iteration += 1
 
     puzzle_data["grid"] = current_state
-    new_row_h, new_col_h = compute_row_col_hints(current_state)
-    puzzle_data["row_hints"] = new_row_h
-    puzzle_data["col_hints"] = new_col_h
     return puzzle_data
 
-
 ########################################
-# 9. 保存对比图函数
+# 9) 保存对比图函数
 ########################################
 def save_comparison_image(original_grid, refined_grid, out_img_path):
     original_arr = np.array(original_grid)
@@ -409,11 +368,11 @@ def save_comparison_image(original_grid, refined_grid, out_img_path):
     plt.close(fig)
 
 ########################################
-# 10. 批量处理：读取 CSV 中所有多解谜题，并保存图片和 refined JSON
+# 10) 批量处理：读取 CSV 中所有多解谜题，并保存图片和 refined JSON
 ########################################
 def batch_refine_and_save_all(multi_csv="multiple_solutions_details.csv",
-                              out_img_dir="./Refined_Images",
-                              out_json_dir="./Refined_JSONs",
+                              out_img_dir="./refined_images",
+                              out_json_dir="./refined_jsons",
                               max_iterations=50,
                               time_limit=10.0):
     if not os.path.isfile(multi_csv):
@@ -442,22 +401,24 @@ def batch_refine_and_save_all(multi_csv="multiple_solutions_details.csv",
             puzzle_data["row_hints"] = r_h
             puzzle_data["col_hints"] = c_h
         original_grid = deepcopy(puzzle_data["grid"])
-        refined_data = simulated_annealing_refinement(puzzle_data, max_iterations=max_iterations, time_limit=time_limit)
+        refined_data = greedy_refinement(puzzle_data, max_iterations=1000, time_limit=time_limit)
         refined_grid = refined_data.get("grid", original_grid)
+        # 保存对比图片
         out_img_path = os.path.join(out_img_dir, f"puzzle_{puzzle_id}_comparison.png")
         save_comparison_image(original_grid, refined_grid, out_img_path)
+        # 保存微调后的 JSON
         out_json_path = os.path.join(out_json_dir, f"puzzle_{puzzle_id}_refined.json")
         with open(out_json_path, 'w', encoding='utf-8') as jf:
             json.dump(refined_data, jf, ensure_ascii=False, indent=2)
-        print(f"Puzzle {puzzle_id} 处理完毕，图像保存在 {out_img_path}，JSON 保存在 {out_json_path}")
+        print(f"Puzzle {puzzle_id} 处理完毕，图片保存在 {out_img_path}，JSON 保存在 {out_json_path}")
 
 ########################################
-# 11. 主函数入口
+# 11) 主函数入口
 ########################################
 def main():
     batch_refine_and_save_all(multi_csv="multiple_solutions_details.csv",
-                              out_img_dir="./classic_stimulated_defined_Images",
-                              out_json_dir="./classic_stimulated_defined_JSONs",
+                              out_img_dir="./Greedy_refined_images",
+                              out_json_dir="./Greedy_refined_jsons",
                               max_iterations=50,
                               time_limit=10.0)
 

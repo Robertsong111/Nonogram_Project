@@ -258,19 +258,15 @@ def allowed_to_flip(original_grid, i, j):
 def simulated_annealing_refinement(puzzle_data, max_iterations=1000, time_limit=10.0,
                                    T0=20.0, cooling_rate=0.99, w1=1.0, w2=0.01, w3=1.0, ambiguity_max_sols=50):
     """
-    利用经典模拟退火对多解谜题进行微调，使谜题达到唯一解，同时保持与原始谜题差异较小。
+    利用模拟退火对多解谜题进行微调，目标是使谜题达到唯一解，同时保持与原始谜题差异较小。
     能量函数 E = w1*(sol_count-1)^2 + w2*diff + w3*ambiguity_penalty，其中：
       - sol_count: 当前谜题的解数
       - diff: 当前状态与原图的汉明距离
       - ambiguity_penalty: 当前状态下所有歧义格出现频率之和
-    每次迭代中：
-      1. 随机从邻域中采样一个候选解（即随机选择一个歧义格翻转，且满足连通性要求），
-      2. 计算候选解的能量，并以概率 exp(-ΔE/T) 接受该候选解，
-      3. 降温并重复。
+    每次迭代中，遍历所有候选歧义格的修改，选择能量最低的候选，再以模拟退火的概率接受该修改。
     """
     original_grid = deepcopy(puzzle_data["grid"])
     current_state = deepcopy(original_grid)
-    # 如果提示不存在，则更新
     if "row_hints" not in puzzle_data or "col_hints" not in puzzle_data:
         row_h, col_h = compute_row_col_hints(current_state)
         puzzle_data["row_hints"] = row_h
@@ -285,7 +281,6 @@ def simulated_annealing_refinement(puzzle_data, max_iterations=1000, time_limit=
         penalty_sol = (sol_count - 1)**2 if sol_count > 1 else 0
         diff = sum(sum(1 for a, b in zip(row, orig_row) if a != b)
                    for row, orig_row in zip(state, original_grid))
-        # 计算歧义惩罚：利用部分解统计当前状态下各格子的歧义频率之和
         m_val = len(state)
         n_val = len(state[0])
         model, x = build_multi_block_cp_model(m_val, n_val, compute_row_col_hints(state)[0], compute_row_col_hints(state)[1])
@@ -304,7 +299,6 @@ def simulated_annealing_refinement(puzzle_data, max_iterations=1000, time_limit=
     iteration = 0
 
     while iteration < max_iterations:
-        # 检查当前谜题是否唯一
         candidate_puzzle = {
             "grid": current_state,
             "row_hints": compute_row_col_hints(current_state)[0],
@@ -315,8 +309,6 @@ def simulated_annealing_refinement(puzzle_data, max_iterations=1000, time_limit=
             print("唯一解达到，模拟退火微调结束。")
             break
 
-        # 从当前状态的邻域中随机采样一个候选修改
-        # 先利用 CP-SAT 得到部分解，计算当前状态下的歧义格集合
         m_val = len(current_state)
         n_val = len(current_state[0])
         model, x = build_multi_block_cp_model(m_val, n_val, puzzle_data["row_hints"], puzzle_data["col_hints"])
@@ -325,58 +317,59 @@ def simulated_annealing_refinement(puzzle_data, max_iterations=1000, time_limit=
         collector = NonogramAllSolutionsCollector(x, max_solutions=ambiguity_max_sols)
         solver.SearchForAllSolutions(model, collector)
         solutions = collector.solutions()
-        ambiguous_cells = []
+        ambiguous_freq = {}
         for sol in solutions:
             for i in range(m_val):
                 for j in range(n_val):
                     if sol[i][j] != current_state[i][j]:
-                        ambiguous_cells.append((i, j))
-        if not ambiguous_cells:
-            print("当前未检测到歧义格，模拟退火提前结束。")
+                        ambiguous_freq[(i, j)] = ambiguous_freq.get((i, j), 0) + 1
+        if not ambiguous_freq:
+            print("无歧义格，提前结束退火。")
             break
 
-        # 随机采样一个候选格（经典模拟退火：只随机采样一个）
-        i_sel, j_sel = random.choice(ambiguous_cells)
-
-        # 检查是否允许翻转
-        if not allowed_to_flip(current_state, i_sel, j_sel):
-            iteration += 1
-            continue
-
-        candidate_state = deepcopy(current_state)
-        candidate_state[i_sel][j_sel] = 1 - candidate_state[i_sel][j_sel]
-
-        # 连通性检查：确保翻转后不会破坏连通性
-        if candidate_state[i_sel][j_sel] == 1:
-            if count_white_components(candidate_state) > count_white_components(current_state):
-                iteration += 1
+        # 遍历所有候选歧义格，计算每个候选修改后的能量
+        best_candidate_state = None
+        best_candidate_energy = None
+        best_cell = None
+        for (i, j), freq in ambiguous_freq.items():
+            if not allowed_to_flip(current_state, i, j):
                 continue
-            if is_isolated_black(candidate_state, i_sel, j_sel):
-                iteration += 1
-                continue
+            candidate_state = deepcopy(current_state)
+            candidate_state[i][j] = 1 - candidate_state[i][j]
+            # 连通性检查
+            if candidate_state[i][j] == 1:
+                if count_white_components(candidate_state) > count_white_components(current_state):
+                    continue
+                if is_isolated_black(candidate_state, i, j):
+                    continue
+            else:
+                if count_black_components(candidate_state) > count_black_components(current_state) or \
+                   count_white_components(candidate_state) > count_white_components(current_state):
+                    continue
+            cand_energy = energy(candidate_state)
+            if best_candidate_energy is None or cand_energy < best_candidate_energy:
+                best_candidate_energy = cand_energy
+                best_candidate_state = candidate_state
+                best_cell = (i, j)
+        if best_candidate_state is not None and best_candidate_energy < current_energy:
+            delta_E = current_energy - best_candidate_energy
+            accept_prob = math.exp(-delta_E / T)
+            if delta_E > 0 or random.random() < accept_prob:
+                current_state = best_candidate_state
+                current_energy = best_candidate_energy
+                row_hints, col_hints = compute_row_col_hints(current_state)
+                puzzle_data["row_hints"] = row_hints
+                puzzle_data["col_hints"] = col_hints
+                print(f"Iteration {iteration}: 选中翻转格子 {best_cell}，能量下降到 {current_energy:.2f}")
+                candidate_puzzle = {"grid": current_state,
+                                    "row_hints": compute_row_col_hints(current_state)[0],
+                                    "col_hints": compute_row_col_hints(current_state)[1]}
+                if count_solutions_up_to_1000(candidate_puzzle, time_limit=time_limit) == 1:
+                    print("唯一解达到，结束模拟退火微调。")
+                    break
         else:
-            if count_black_components(candidate_state) > count_black_components(current_state) or \
-               count_white_components(candidate_state) > count_white_components(current_state):
-                iteration += 1
-                continue
-
-        cand_energy = energy(candidate_state)
-        delta_E = cand_energy - current_energy
-
-        # 经典模拟退火接受规则：如果能量降低则接受；否则以概率 exp(-ΔE/T) 接受
-        if delta_E < 0 or random.random() < math.exp(-delta_E / T):
-            current_state = candidate_state
-            current_energy = cand_energy
-            print(f"Iteration {iteration}: 翻转格子 ({i_sel},{j_sel}) 被接受，当前能量 {current_energy:.2f}")
-            candidate_puzzle = {"grid": current_state,
-                                "row_hints": compute_row_col_hints(current_state)[0],
-                                "col_hints": compute_row_col_hints(current_state)[1]}
-            if count_solutions_up_to_1000(candidate_puzzle, time_limit=time_limit) == 1:
-                print("唯一解达到，结束模拟退火微调。")
-                break
-        else:
-            print(f"Iteration {iteration}: 翻转格子 ({i_sel},{j_sel}) 被拒绝（ΔE = {delta_E:.2f}）。")
-
+            print(f"Iteration {iteration}: 无候选修改能降低能量。")
+            break
         T *= cooling_rate
         iteration += 1
 
@@ -385,7 +378,6 @@ def simulated_annealing_refinement(puzzle_data, max_iterations=1000, time_limit=
     puzzle_data["row_hints"] = new_row_h
     puzzle_data["col_hints"] = new_col_h
     return puzzle_data
-
 
 ########################################
 # 9. 保存对比图函数
@@ -456,8 +448,8 @@ def batch_refine_and_save_all(multi_csv="multiple_solutions_details.csv",
 ########################################
 def main():
     batch_refine_and_save_all(multi_csv="multiple_solutions_details.csv",
-                              out_img_dir="./classic_stimulated_defined_Images",
-                              out_json_dir="./classic_stimulated_defined_JSONs",
+                              out_img_dir="./stimulated_defined_Images",
+                              out_json_dir="./stimulated_defined_JSONs",
                               max_iterations=50,
                               time_limit=10.0)
 
