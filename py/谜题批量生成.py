@@ -3,7 +3,7 @@ import json
 from PIL import Image
 import torch
 from torchvision import datasets, transforms
-
+import random
 
 # ---------------------------
 # 1) MNIST 加载
@@ -119,7 +119,7 @@ def bulk_mnist_to_nonogram(
         threshold=128
 ):
     """
-    从 mnist_dataset 里取前 num_samples 张图像，
+    从 mnist_dataset 里随机挑选 num_samples 张图像，
     转成 Nonogram puzzle，并分别存储 JSON 文件和对应的黑白图像。
     JSON 文件中保存行列提示，黑白图像直观显示谜题格子。
     """
@@ -132,9 +132,10 @@ def bulk_mnist_to_nonogram(
     num_samples = min(num_samples, n_total)
     print(f"Total MNIST samples: {n_total}, we will process: {num_samples}")
 
-    for i in range(num_samples):
-        # 获取 MNIST 图像和标签
-        img_pil, label = mnist_dataset[i]
+    # 随机选择num_samples张样本
+    random_samples = random.sample(list(mnist_dataset), num_samples)
+
+    for i, (img_pil, label) in enumerate(random_samples):
         # 转成 Nonogram
         grid, row_cons, col_cons = mnist_image_to_nonogram(img_pil, final_size, threshold)
         puzzle_data = {
@@ -164,11 +165,11 @@ def bulk_mnist_to_nonogram(
 if __name__=="__main__":
     # a) 加载 MNIST 训练集
     mnist_train = load_mnist_dataset(download=True, root="./mnist_data")
-    # b) 只取前 1000 张示例（你可以调整 num_samples 至 60000）
+    # b) 随机选择1000个示例（您可以调整 num_samples 至 60000）
     bulk_mnist_to_nonogram(
         mnist_dataset=mnist_train,
-        num_samples=1000,
-        final_size=(20,20),   # 可以根据需要调整输出谜题的格子尺寸
+        num_samples=2000,  # 随机选择1000个样本
+        final_size=(12, 12),   # 可以根据需要调整输出谜题的格子尺寸
         out_dir="./mnist_nonograms",
         out_img_dir="./mnist_nonograms_images",
         threshold=128
