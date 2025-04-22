@@ -14,12 +14,13 @@ import numpy as np
 from ortools.sat.python import cp_model
 
 
-# ---------------------------
-# 1. 辅助函数：计算行/列提示
-# ---------------------------
+########################################
+# 1) 辅助函数：计算行/列提示
+########################################
 def compute_row_col_hints(grid):
     m = len(grid)
     n = len(grid[0]) if m else 0
+
     row_hints = []
     for i in range(m):
         hint = []
@@ -34,6 +35,7 @@ def compute_row_col_hints(grid):
         if count:
             hint.append(count)
         row_hints.append(hint)
+
     col_hints = []
     for j in range(n):
         hint = []
@@ -48,13 +50,15 @@ def compute_row_col_hints(grid):
         if count:
             hint.append(count)
         col_hints.append(hint)
+
     return row_hints, col_hints
 
 
-# ---------------------------
-# 2. CP-SAT 求解器相关：用于判断唯一性
-# ---------------------------
+########################################
+# 2) CP-SAT 求解器相关：判断谜题解数
+########################################
 class NonogramAllSolutionsCollector(cp_model.CpSolverSolutionCallback):
+
     def __init__(self, x, max_solutions=1000):
         cp_model.CpSolverSolutionCallback.__init__(self)
         self._x = x
@@ -79,6 +83,7 @@ class NonogramAllSolutionsCollector(cp_model.CpSolverSolutionCallback):
 
 
 def build_multi_block_cp_model(m, n, row_constraints, col_constraints):
+
     model = cp_model.CpModel()
     x = []
     for i in range(m):
@@ -87,20 +92,24 @@ def build_multi_block_cp_model(m, n, row_constraints, col_constraints):
             var = model.NewBoolVar(f"x_{i}_{j}")
             row_vars.append(var)
         x.append(row_vars)
+
     # 行约束
     for i in range(m):
         blocks = row_constraints[i]
         if not blocks:
+            # 无黑格 -> 全部置0
             for j in range(n):
                 model.Add(x[i][j] == 0)
             continue
+
         rowBlockVars = []
         for b, length_b in enumerate(blocks):
             starts = []
-            for start in range(n - length_b + 1):
-                starts.append(model.NewBoolVar(f"rB_{i}_{b}_{start}"))
+            for start_col in range(n - length_b + 1):
+                starts.append(model.NewBoolVar(f"rB_{i}_{b}_{start_col}"))
             model.Add(sum(starts) == 1)
             rowBlockVars.append((length_b, starts))
+
         for b in range(len(blocks) - 1):
             length_b = blocks[b]
             starts_b = rowBlockVars[b][1]
@@ -109,6 +118,7 @@ def build_multi_block_cp_model(m, n, row_constraints, col_constraints):
                 for s2, var2 in enumerate(starts_next):
                     if s2 < s1 + length_b + 1:
                         model.Add(var1 + var2 <= 1)
+
         for j in range(n):
             cover_vars = []
             for (length_b, starts) in rowBlockVars:
@@ -119,6 +129,7 @@ def build_multi_block_cp_model(m, n, row_constraints, col_constraints):
                 model.Add(x[i][j] == sum(cover_vars))
             else:
                 model.Add(x[i][j] == 0)
+
     # 列约束
     for j in range(n):
         blocks = col_constraints[j]
@@ -126,13 +137,15 @@ def build_multi_block_cp_model(m, n, row_constraints, col_constraints):
             for i in range(m):
                 model.Add(x[i][j] == 0)
             continue
+
         colBlockVars = []
         for b, length_b in enumerate(blocks):
             starts = []
-            for start in range(m - length_b + 1):
-                starts.append(model.NewBoolVar(f"cB_{j}_{b}_{start}"))
+            for start_row in range(m - length_b + 1):
+                starts.append(model.NewBoolVar(f"cB_{j}_{b}_{start_row}"))
             model.Add(sum(starts) == 1)
             colBlockVars.append((length_b, starts))
+
         for b in range(len(blocks) - 1):
             length_b = blocks[b]
             starts_b = colBlockVars[b][1]
@@ -141,6 +154,7 @@ def build_multi_block_cp_model(m, n, row_constraints, col_constraints):
                 for s2, var2 in enumerate(starts_next):
                     if s2 < s1 + length_b + 1:
                         model.Add(var1 + var2 <= 1)
+
         for i in range(m):
             cover_vars = []
             for (length_b, starts) in colBlockVars:
@@ -151,32 +165,37 @@ def build_multi_block_cp_model(m, n, row_constraints, col_constraints):
                 model.Add(x[i][j] == sum(cover_vars))
             else:
                 model.Add(x[i][j] == 0)
+
     return model, x
 
 
 def count_solutions_up_to_1000(puzzle_data, time_limit=100.0):
-    row_hints = puzzle_data.get("row_hints", puzzle_data.get("row_constraints"))
-    col_hints = puzzle_data.get("col_hints", puzzle_data.get("col_constraints"))
+
+    row_hints = puzzle_data.get("row_hints")
+    col_hints = puzzle_data.get("col_hints")
     if not row_hints or not col_hints:
         return 0
     m = len(row_hints)
     n = len(col_hints)
     if m == 0 or n == 0:
         return 0
+
     model, x = build_multi_block_cp_model(m, n, row_hints, col_hints)
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = time_limit
     collector = NonogramAllSolutionsCollector(x, max_solutions=1000)
     status = solver.SearchForAllSolutions(model, collector)
+
     if status not in (cp_model.FEASIBLE, cp_model.OPTIMAL):
         return 0
     return len(collector.solutions())
 
 
-# ---------------------------
-# 3. 连通性检测函数（黑色、白色）以及孤立黑格检查
-# ---------------------------
+########################################
+# 3) 连通性检测等函数
+########################################
 def count_black_components(grid):
+
     m = len(grid)
     if m == 0:
         return 0
@@ -197,13 +216,13 @@ def count_black_components(grid):
                            (1, -1), (1, 0), (1, 1)]:
                 stack.append((ci + di, cj + dj))
 
-    count = 0
+    comp_count = 0
     for i in range(m):
         for j in range(n):
             if grid[i][j] == 1 and not visited[i][j]:
-                count += 1
+                comp_count += 1
                 dfs(i, j)
-    return count
+    return comp_count
 
 
 def count_white_components(grid):
@@ -211,32 +230,62 @@ def count_white_components(grid):
     return count_black_components(inverted)
 
 
-def is_isolated_black(grid, i, j):
-    m = len(grid)
-    n = len(grid[0]) if m > 0 else 0
-    directions = [(-1, -1), (-1, 0), (-1, 1),
-                  (0, -1), (0, 1),
-                  (1, -1), (1, 0), (1, 1)]
-    for di, dj in directions:
-        ni, nj = i + di, j + dj
-        if 0 <= ni < m and 0 <= nj < n:
-            if grid[ni][nj] == 1:
-                return False
-    return True
+def allowed_to_flip(original_grid, i, j):
+    orig_black = count_black_components(original_grid)
+    orig_white = count_white_components(original_grid)
+
+    candidate = deepcopy(original_grid)
+    candidate[i][j] = 1 - candidate[i][j]
+
+    new_black = count_black_components(candidate)
+    new_white = count_white_components(candidate)
+    return not (new_black > orig_black or new_white > orig_white)
 
 
-# ---------------------------
-# 4. MIP 优化方法：基于最小修改使得生成的提示唯一，
-#    且保证修改后黑色和白色连通分量不增加（允许减少）
-#    并利用歧义格信息对目标函数进行加权
-# ---------------------------
+########################################
+# 4) 生成原图与微调后图的对比图片
+########################################
+def save_comparison_image(original_grid, refined_grid, out_img_path):
+    """
+    将原图 / 微调后图 / 差分图并排显示并保存。
+    差分图表示两个grid对应位置不同则显示1，否则0。
+    """
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    original_arr = np.array(original_grid)
+    refined_arr = np.array(refined_grid)
+    diff_arr = np.abs(original_arr - refined_arr)
+
+    fig, ax = plt.subplots(1, 3, figsize=(12, 4))
+    ax[0].imshow(original_arr, cmap='binary', interpolation='nearest')
+    ax[0].set_title("Original Grid")
+    ax[0].axis('off')
+
+    ax[1].imshow(refined_arr, cmap='binary', interpolation='nearest')
+    ax[1].set_title("Refined Grid")
+    ax[1].axis('off')
+
+    ax[2].imshow(diff_arr, cmap='gray', interpolation='nearest')
+    ax[2].set_title("Difference (Flips)")
+    ax[2].axis('off')
+
+    plt.tight_layout()
+    plt.savefig(out_img_path)
+    plt.close(fig)
+
+
+########################################
+# 5) MIP 优化方法 (mip_refinement)
+#    并输出 iteration_used, time_spent, final_hamming_distance, success
+########################################
 def compute_modified_grid(original_grid, delta):
     """
-    根据原图和 MIP 模型求解的 delta（0/1矩阵），计算修改后的 grid，
-    new_grid[i][j] = original_grid[i][j] XOR delta[i][j]
+    根据 MIP解出的 delta，将 original_grid 对应位置翻转 (XOR)。
+    delta[i][j]=1 表示该格子需要翻转。
     """
     m = len(original_grid)
-    n = len(original_grid[0])
+    n = len(original_grid[0]) if m else 0
     new_grid = []
     for i in range(m):
         new_row = []
@@ -248,92 +297,116 @@ def compute_modified_grid(original_grid, delta):
 
 def compute_ambiguity_weight(original_grid):
     """
-    利用 SAT 求解器计算原图的歧义格频率，
-    并返回一个 m x n 的权重矩阵：weight[i][j] = 1 / (ambiguity + 1)
-    意思是歧义频率越高，权重越低，修改该单元格代价较低。
+    利用 CP-SAT 求解器枚举部分解(上限50)，统计与原图不同的格子频率，
+    并返回一个 weight 矩阵： weight[i][j] = 1 / (freq + 1)
+    歧义格频率越高 -> 权重越小 -> 修改成本更低
     """
     m = len(original_grid)
     n = len(original_grid[0])
-    # 使用 CP-SAT 求解器枚举部分解（上限 50 个）
+    # 先算 hints
     row_hints, col_hints = compute_row_col_hints(original_grid)
-    puzzle = {"grid": original_grid, "row_hints": row_hints, "col_hints": col_hints}
-    sol_count = count_solutions_up_to_1000(puzzle, time_limit=30)
-    # 若原图为多解，则计算每个单元格在不同解中出现不同的次数
-    # 这里简单地重新求解，并比较每个解与原图的差异
+    puzzle_temp = {"grid": original_grid, "row_hints": row_hints, "col_hints": col_hints}
+
     model, x = build_multi_block_cp_model(m, n, row_hints, col_hints)
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = 30
     collector = NonogramAllSolutionsCollector(x, max_solutions=50)
     solver.SearchForAllSolutions(model, collector)
     solutions = collector.solutions()
+
     ambiguous_freq = {}
     for sol in solutions:
         for i in range(m):
             for j in range(n):
                 if sol[i][j] != original_grid[i][j]:
                     ambiguous_freq[(i, j)] = ambiguous_freq.get((i, j), 0) + 1
-    # 定义权重：权重 = 1 / (freq + 1)
+
     weight = [[1.0 / (ambiguous_freq.get((i, j), 0) + 1) for j in range(n)] for i in range(m)]
     return weight
 
 
 def mip_refinement(puzzle_data, mip_time_limit=60, max_mip_iterations=10):
     """
-    基于 MIP 求解器对谜题进行最小修改，使得修改后的谜题提示产生唯一解，
-    并且保证修改后黑色和白色连通分量不增加（允许减少）。
-    这里增加预处理：对于原图中不允许单独翻转的格子（即翻转会破坏连通性），固定为0；
-    同时利用歧义格权重信息为目标函数加权。
+    基于 MIP 求解器对谜题进行最小修改，使得修改后的谜题唯一解，
+    且保证黑白连通分量不增(allowed_to_flip)。
+    同时利用歧义格信息对目标函数加权(歧义越多->权重越低->修改成本越低)。
+
+    返回一个 result dict:
+    {
+        "final_grid": ...,
+        "iteration_used": ...,
+        "time_spent": ...,
+        "final_hamming_distance": ...,
+        "success": ...
+    }
     """
+    start_time = time.time()
+
     original_grid = deepcopy(puzzle_data["grid"])
     m = len(original_grid)
     n = len(original_grid[0])
 
-    # 计算原图的提示及连通分量
+    # 计算行列提示
     orig_row_hints, orig_col_hints = compute_row_col_hints(original_grid)
+    puzzle_data["row_hints"] = orig_row_hints
+    puzzle_data["col_hints"] = orig_col_hints
+
     orig_black = count_black_components(original_grid)
     orig_white = count_white_components(original_grid)
 
-    # 预处理：构造 allowed_mask，判断哪些格子允许修改（单独翻转不会增加连通分量）
-    allowed_mask = [[1 for j in range(n)] for i in range(m)]
+    # 构造 allowed_mask: 若单翻转(i,j)会增加连通分量,就不允许
+    allowed_mask = [[1 for _ in range(n)] for _ in range(m)]
     for i in range(m):
         for j in range(n):
             if not allowed_to_flip(original_grid, i, j):
                 allowed_mask[i][j] = 0
 
-    # 利用原图的歧义格信息计算权重矩阵（歧义频率越高，权重越低）
+    # 计算歧义格加权
     weight_matrix = compute_ambiguity_weight(original_grid)
 
-    # 初始化 MIP 模型
+    # 创建MIP模型
     prob = LpProblem("Nonogram_Modification", LpMinimize)
 
-    # 定义二元变量 delta[i][j]，对于不允许修改的格子固定为0
-    delta = [[None for j in range(n)] for i in range(m)]
+    # 定义二元变量 delta[i][j]
+    delta = [[None] * n for _ in range(m)]
     for i in range(m):
         for j in range(n):
             if allowed_mask[i][j] == 1:
                 delta[i][j] = LpVariable(f"delta_{i}_{j}", cat=LpBinary)
             else:
+                # 不允许翻转 -> 强制0
                 delta[i][j] = 0
 
-    # 目标函数：加权最小化修改数
-    prob += lpSum((weight_matrix[i][j] * delta[i][j]) if allowed_mask[i][j] == 1 else 0
-                  for i in range(m) for j in range(n)), "Total_Weighted_Modifications"
+    # 目标函数: 加权最小化修改数
+    prob += lpSum(
+        weight_matrix[i][j] * delta[i][j] if allowed_mask[i][j] == 1 else 0
+        for i in range(m)
+        for j in range(n)
+    ), "Total_Weighted_Modifications"
 
-    # 切割约束集合
+    iteration_used = 0
+    success = False
+    final_grid = deepcopy(original_grid)
+
+    # 用来存 "排除已经找到的 candidate" 的 cut 约束
     cuts = []
-    best_delta = None
 
     for iteration in range(max_mip_iterations):
-        print(f"MIP 迭代 {iteration} 开始求解...")
+        iteration_used += 1
+        print(f"MIP 迭代 {iteration + 1} 开始求解...")
+
+        # 求解
         status = prob.solve(PULP_CBC_CMD(timeLimit=mip_time_limit, msg=0))
-        if status != 1:
-            print("MIP 求解失败或超时。")
+        if status != 1:  # 1=optimal
+            print("MIP 求解失败或超时.")
             break
 
         # 提取 MIP 解
         candidate_delta = [[int(delta[i][j].varValue) if allowed_mask[i][j] == 1 else 0
                             for j in range(n)] for i in range(m)]
         candidate_grid = compute_modified_grid(original_grid, candidate_delta)
+
+        # 统计: 解数, black/white连通分量, 修改格数
         new_row_hints, new_col_hints = compute_row_col_hints(candidate_grid)
         candidate_puzzle = {
             "grid": candidate_grid,
@@ -343,120 +416,153 @@ def mip_refinement(puzzle_data, mip_time_limit=60, max_mip_iterations=10):
         sol_count = count_solutions_up_to_1000(candidate_puzzle, time_limit=30)
         cand_black = count_black_components(candidate_grid)
         cand_white = count_white_components(candidate_grid)
-        mod_count = sum(sum(row) for row in candidate_delta)
-        print(f"当前修改 {mod_count} 个格子, SAT 检测解数为 {sol_count}")
-        print(f"原图黑连通分量 {orig_black}，新图 {cand_black}；原图白连通分量 {orig_white}，新图 {cand_white}")
+        mod_count = sum(sum(r) for r in candidate_delta)
 
+        print(f"[Iteration {iteration + 1}] 修改 {mod_count} 格子 -> 解数={sol_count}, "
+              f"blackComp={cand_black}, whiteComp={cand_white}")
+
+        # 判断是否满足条件
         if sol_count == 1 and cand_black <= orig_black and cand_white <= orig_white:
-            print("找到满足唯一性和连通性要求的修改方案。")
-            best_delta = candidate_delta
-            puzzle_data["grid"] = candidate_grid
-            puzzle_data["row_hints"] = new_row_hints
-            puzzle_data["col_hints"] = new_col_hints
-            return puzzle_data
+            print("找到唯一解且黑白连通分量未增.")
+            final_grid = candidate_grid
+            success = True
+            break
         else:
-            # 添加切割约束：排除当前 candidate
-            cut_expr = lpSum(delta[i][j] if candidate_delta[i][j] == 1 else (1 - delta[i][j])
-                             for i in range(m) for j in range(n) if allowed_mask[i][j] == 1)
+            # 排除该 candidate
+            # 对candidate_delta里=1的格子 -> delta[i][j],
+            #  =0的格子 -> (1-delta[i][j])，将这些相加 <= total_allowed - 1
+            cut_expr = lpSum(
+                delta[i][j] if candidate_delta[i][j] == 1 else (1 - delta[i][j])
+                for i in range(m) for j in range(n) if allowed_mask[i][j] == 1
+            )
             total_allowed = sum(allowed_mask[i][j] for i in range(m) for j in range(n))
             prob += cut_expr <= total_allowed - 1, f"Cut_{iteration}"
             cuts.append(cut_expr)
-            print(f"添加切割约束，当前切割约束数：{len(cuts)}")
-    print("MIP 迭代达到最大次数，但未能找到满足要求的修改方案。")
-    return puzzle_data
+            print(f"添加 cut 约束，当前cut总数={len(cuts)}")
+
+    end_time = time.time()
+    time_spent = end_time - start_time
+
+    # 计算最终与原图的汉明距离
+    diff_count = 0
+    for r1, r2 in zip(original_grid, final_grid):
+        for a, b in zip(r1, r2):
+            if a != b:
+                diff_count += 1
+
+    # 返回结果
+    result = {
+        "final_grid": final_grid,
+        "iteration_used": iteration_used,
+        "time_spent": time_spent,
+        "final_hamming_distance": diff_count,
+        "success": success
+    }
+    return result
 
 
-def allowed_to_flip(original_grid, i, j):
+########################################
+# 6) 批量处理函数
+#    从CSV读多解记录 -> 调用 mip_refinement -> 保存对比图/JSON -> 记录结果
+########################################
+def batch_mip_refine_and_save_all(multi_csv="multiple_solutions_details.csv",
+                                  out_json_dir="./mip_refined_jsons",
+                                  out_img_dir="./mip_refined_images",
+                                  mip_time_limit=60,
+                                  max_mip_iterations=10):
     """
-    判断单独翻转原图中 (i,j) 这个格子是否会导致黑色或白色连通分量增加。
-    如果翻转后连通分量增加，则返回 False。
+    批量对多解puzzle执行MIP微调, 并将结果存到 'mip_refinement_results.csv'
     """
-    orig_black = count_black_components(original_grid)
-    orig_white = count_white_components(original_grid)
-    candidate = deepcopy(original_grid)
-    candidate[i][j] = 1 - candidate[i][j]
-    new_black = count_black_components(candidate)
-    new_white = count_white_components(candidate)
-    if new_black > orig_black or new_white > orig_white:
-        return False
-    return True
-
-
-# ---------------------------
-# 5. 保存对比图函数
-# ---------------------------
-def save_comparison_image(original_grid, refined_grid, out_img_path):
-    original_arr = np.array(original_grid)
-    refined_arr = np.array(refined_grid)
-    diff_arr = np.abs(original_arr - refined_arr)
-    fig, ax = plt.subplots(1, 3, figsize=(12, 4))
-    ax[0].imshow(original_arr, cmap='binary', interpolation='nearest')
-    ax[0].set_title("Original Grid")
-    ax[0].axis('off')
-    ax[1].imshow(refined_arr, cmap='binary', interpolation='nearest')
-    ax[1].set_title("Refined Grid")
-    ax[1].axis('off')
-    ax[2].imshow(diff_arr, cmap='gray', interpolation='nearest')
-    ax[2].set_title("Difference (Flips)")
-    ax[2].axis('off')
-    plt.tight_layout()
-    plt.savefig(out_img_path)
-    plt.close(fig)
-
-
-# ---------------------------
-# 6. 批量处理 MIP 微调：结合现有数据批量处理谜题，
-#    同时保存微调后 JSON 和对比图片
-# ---------------------------
-def batch_mip_refine_and_save(multi_csv="multiple_solutions_details.csv",
-                              out_json_dir="./mip_refined_jsons",
-                              out_img_dir="./mip_refined_images",
-                              mip_time_limit=60,
-                              max_mip_iterations=10):
     if not os.path.isfile(multi_csv):
-        print(f"错误：找不到 {multi_csv}")
+        print(f"错误: 找不到 {multi_csv}")
         return
+
     df = pd.read_csv(multi_csv)
-    df_multi = df[df["num_solutions"] > 1]
+    df_multi = df[df["num_solutions"] > 1]  # 仅处理多解
     if df_multi.empty:
-        print("没有多解谜题记录，退出。")
+        print("没有多解谜题记录, 退出.")
         return
+
     if not os.path.exists(out_json_dir):
         os.makedirs(out_json_dir)
     if not os.path.exists(out_img_dir):
         os.makedirs(out_img_dir)
+
+    records = []
+
     for idx, row in df_multi.iterrows():
         puzzle_id = row.get("puzzle_id", f"row_{idx}")
-        json_path = row["json_file_path"]
-        if not os.path.isfile(json_path):
-            print(f"文件不存在: {json_path}")
+        json_path = row.get("json_file_path", None)
+        if not json_path or not os.path.isfile(json_path):
+            print(f"[警告] puzzle_id={puzzle_id}: 缺少有效 json_file_path 或文件不存在.")
             continue
-        print(f"\n===== 处理 Puzzle {puzzle_id} ({json_path}) =====")
+
+        print(f"\n===== MIP 微调 Puzzle {puzzle_id} ({json_path}) =====")
         with open(json_path, 'r', encoding='utf-8') as f:
             puzzle_data = json.load(f)
-        if "grid" in puzzle_data and puzzle_data["grid"]:
-            r_h, c_h = compute_row_col_hints(puzzle_data["grid"])
-            puzzle_data["row_hints"] = r_h
-            puzzle_data["col_hints"] = c_h
+
         original_grid = deepcopy(puzzle_data["grid"])
-        refined_data = mip_refinement(puzzle_data, mip_time_limit=mip_time_limit, max_mip_iterations=max_mip_iterations)
-        refined_grid = refined_data.get("grid", original_grid)
-        # 保存对比图片
+
+        # 调用 MIP 微调
+        result = mip_refinement(
+            puzzle_data,
+            mip_time_limit=mip_time_limit,
+            max_mip_iterations=max_mip_iterations
+        )
+        refined_grid = result["final_grid"]
+
+        # 保存对比图
         out_img_path = os.path.join(out_img_dir, f"puzzle_{puzzle_id}_comparison.png")
         save_comparison_image(original_grid, refined_grid, out_img_path)
-        # 保存微调后的 JSON
-        out_json_path = os.path.join(out_json_dir, f"puzzle_{puzzle_id}_mip_refined.json")
-        with open(out_json_path, 'w', encoding='utf-8') as jf:
-            json.dump(refined_data, jf, ensure_ascii=False, indent=2)
-        print(f"Puzzle {puzzle_id} 微调完成，图片保存在 {out_img_path}，JSON 保存在 {out_json_path}")
+
+        # 保存 refined JSON
+        refined_json_path = os.path.join(out_json_dir, f"puzzle_{puzzle_id}_mip_refined.json")
+        puzzle_refined_data = {
+            "grid": refined_grid,
+            "row_hints": compute_row_col_hints(refined_grid)[0],
+            "col_hints": compute_row_col_hints(refined_grid)[1]
+        }
+        with open(refined_json_path, 'w', encoding='utf-8') as jf:
+            json.dump(puzzle_refined_data, jf, ensure_ascii=False, indent=2)
+
+        record = {
+            "puzzle_id": puzzle_id,
+            "json_file_path": json_path,
+            "num_solutions": row["num_solutions"],
+
+            "iteration_used": result["iteration_used"],
+            "time_spent": result["time_spent"],
+            "final_hamming_distance": result["final_hamming_distance"],
+            "success": result["success"],
+
+            "refined_img_path": out_img_path,
+            "refined_json_path": refined_json_path
+        }
+        records.append(record)
+
+        print(f"Puzzle {puzzle_id} 完毕: success={record['success']}, "
+              f"iter={record['iteration_used']}, time={record['time_spent']:.2f}s, "
+              f"hamming_distance={record['final_hamming_distance']}")
+
+    # 汇总写入CSV
+    out_csv = "mip_refinement_results.csv"
+    df_out = pd.DataFrame(records)
+    df_out.to_csv(out_csv, index=False)
+    print(f"\n=== 批量处理结束，共处理 {len(records)} 个拼图 ===")
+    print(f"结果已保存到 {out_csv}")
 
 
+########################################
+# 7) main
+########################################
 def main():
-    batch_mip_refine_and_save(multi_csv="multiple_solutions_details.csv",
-                              out_json_dir="./mip_refined_jsons",
-                              out_img_dir="./mip_refined_images",
-                              mip_time_limit=60,
-                              max_mip_iterations=50)
+    batch_mip_refine_and_save_all(
+        multi_csv="multiple_solutions_details.csv",
+        out_json_dir="./mip_refined_jsons",
+        out_img_dir="./mip_refined_images",
+        mip_time_limit=60,
+        max_mip_iterations=200
+    )
 
 
 if __name__ == "__main__":

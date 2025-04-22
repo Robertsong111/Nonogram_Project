@@ -30,12 +30,7 @@ class NonogramAllSolutionsCollector(cp_model.CpSolverSolutionCallback):
         return self._solutions
 
 def build_multi_block_cp_model(m, n, row_constraints, col_constraints):
-    """
-    使用 OR-Tools (CP-SAT) 建立“多段行约束、多段列约束”的 Nonogram 模型。
-    row_constraints[i] = [r1, r2, ...] 表示第 i 行有若干段，每段长度分别是 r1, r2, ...
-    col_constraints[j] = [c1, c2, ...] 表示第 j 列有若干段，每段长度分别是 c1, c2, ...
-    返回 (model, x)，其中 x[i][j] 为布尔变量，表示网格 (i,j) 是否为黑格。
-    """
+
     model = cp_model.CpModel()
 
     # 定义网格变量 x[i][j]，布尔型
@@ -188,10 +183,6 @@ def find_all_solutions_cp(m, n, row_constraints, col_constraints):
     return solution_collector.solutions()
 
 if __name__ == "__main__":
-    # 下面给一个简短示例: 5行×5列，但每行/列都可能有多段
-    # row_constraints[i] 表示第 i 行的黑块段长度列表
-    # 例如 row_constraints = [ [2,1], [], [3], [1,1], ... ] 等
-    # 这里简单做个演示
     row_constraints = [[1], [1], [1], [1], [1], [1], [1]]
     col_constraints = [[1], [1], [1], [1], [1], [1], [1]]
     m = len(row_constraints)

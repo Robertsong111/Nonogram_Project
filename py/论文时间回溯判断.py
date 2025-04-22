@@ -36,7 +36,7 @@ def apply_all_rules(row, hints):
         apply_rule_3_3(row, hints, run_ranges)
     apply_rule_1_2_safe(row, run_ranges)
     return row
-
+#若某段提示的可行区间比提示长度只大一点，那么它们在区间内必定会有一段重叠区，这部分重叠区域必定是黑格。
 def apply_rule_1_1(row, hints, run_ranges):
     for i, (start, end) in enumerate(run_ranges):
         length = hints[i]
@@ -48,7 +48,7 @@ def apply_rule_1_1(row, hints, run_ranges):
         for j in range(overlap_start, overlap_end + 1):
             if 0 <= j < len(row) and row[j] == '.':
                 row[j] = '#'
-
+#若某些列在所有提示段区间之外，则这些列不可能是黑格，直接标记为白格 X。
 def apply_rule_1_2_safe(row, run_ranges):
     n = len(row)
     if not run_ranges:
@@ -61,7 +61,7 @@ def apply_rule_1_2_safe(row, run_ranges):
     for i in range(right_most + 1, n):
         if row[i] == '.':
             row[i] = 'X'
-
+#当在某段区间内已经出现了足够长度的连续黑格并与该段长度相符，那么该段两端相邻的未知位置必然是白格。
 def apply_rule_1_3(row, hints, run_ranges):
     n = len(row)
     for i, (start, end) in enumerate(run_ranges):
@@ -73,7 +73,7 @@ def apply_rule_1_3(row, hints, run_ranges):
                         row[pos - 1] = 'X'
                     if pos + length < n and row[pos + length] == '.':
                         row[pos + length] = 'X'
-
+#若行内出现「# . #」的结构，且这几个连续 # 的总长度已经超过所有提示的最大值，则夹在中间的那个 . 不可能是黑格，必为 X。
 def apply_rule_1_4(row, hints):
     n = len(row)
     max_hint = max(hints) if hints else 0
@@ -90,7 +90,7 @@ def apply_rule_1_4(row, hints):
                 right += 1
             if length > max_hint:
                 row[i] = 'X'
-
+#对于每个尚未确定的格子，如果它在所有提示段的区间中都无合适位置（即该 . 不可能被任何提示段覆盖），则该格必为白格 X。
 def apply_rule_1_5(row, hints, run_ranges):
     n = len(row)
     for i in range(n):
@@ -103,7 +103,7 @@ def apply_rule_1_5(row, hints, run_ranges):
                 break
         if not can_be_black:
             row[i] = 'X'
-
+#对相邻两个提示段的区间进行「相互挤压」。因为每段之间至少留出 1 格空白，若前面一段占用的区间往右推，就会推动后面一段的起点也向右移动，反之亦然。
 def apply_rule_2_1(hints, run_ranges):
     k = len(hints)
     for j in range(1, k):
@@ -114,7 +114,7 @@ def apply_rule_2_1(hints, run_ranges):
         _, next_end = run_ranges[j + 1]
         next_len = hints[j + 1]
         run_ranges[j] = (run_ranges[j][0], min(run_ranges[j][1], next_end - next_len - 1))
-
+#若在行中已经有确定的 # 出现，那么对应的段区间不能与这些 # 冲突，需要往内收缩。
 def apply_rule_2_2(row, hints, run_ranges):
     n = len(row)
     for idx, (start, end) in enumerate(run_ranges):
@@ -123,7 +123,7 @@ def apply_rule_2_2(row, hints, run_ranges):
         while end + 1 < n and row[end + 1] == '#':
             end -= 1
         run_ranges[idx] = (start, end)
-
+#如果实际出现了一段比所有提示都大的连续 # 块，这显然与提示冲突，这块不可能是黑格，应视为无效，直接填 X。
 def apply_rule_2_3(row, hints, run_ranges):
     n = len(row)
     segments = []
@@ -141,7 +141,7 @@ def apply_rule_2_3(row, hints, run_ranges):
         if seg_end - seg_start + 1 > max_hint:
             for i in range(seg_start, seg_end + 1):
                 row[i] = 'X'
-
+#如果某段已经出现了部分连续 #，并且这些 # 完全处在某个提示段区间中，而且不超过该段长度，那么那段之间的 .（即连接这些 # 的空位）也必是 #。
 def apply_rule_3_1(row, hints, run_ranges):
     n = len(row)
     i = 0
@@ -160,7 +160,7 @@ def apply_rule_3_1(row, hints, run_ranges):
             i += 1
         else:
             i += 1
-
+#如果行中实际出现一段连续 # 的长度比任意提示段的最小值还要小，那它不可能是真正的黑块，应把它们改成白格。
 def apply_rule_3_2(row, hints):
     n = len(row)
     min_hint = min(hints) if hints else 0
@@ -175,7 +175,7 @@ def apply_rule_3_2(row, hints):
                 for j in range(start, end + 1):
                     row[j] = 'X'
         i += 1
-
+#若某行出现了一段较长的 # 并且它位于某一提示段的 (rstart, rend) 内，但却比该提示长度大，那么说明这段提示的范围实际上要缩小。
 def apply_rule_3_3(row, hints, run_ranges):
     n = len(row)
     segments = []
@@ -196,10 +196,7 @@ def apply_rule_3_3(row, hints, run_ranges):
             if seg_end - seg_start + 1 > h:
                 run_ranges[idx] = (max(rstart, seg_start), min(rend, seg_end))
 
-# 这部分为逻辑规则的完整代码实现，完全基于你之前提供的论文。你可以现在测试任意一行 row 和 hint，调用 apply_all_rules(row, hints) 来查看推理后的结果。
 
-# 下一步如果你需要我把它集成到一个完整的 Nonogram 求解器（支持行列约束、找所有解），我可以继续往下接。
-# 是否继续？
 def match_col_prefix(col_vals, constraint):
     segments = []
     cnt = 0
@@ -292,22 +289,16 @@ if __name__ == "__main__":
     row_constraints = [[1], [1], [1], [1], [1], [1], [1]]
     col_constraints = [[1], [1], [1], [1], [1], [1], [1]]
 
-    # 开始计时
     start_time = time.time()
 
-    # 使用你的逻辑回溯求解器
     solutions = solve_nonogram(row_constraints, col_constraints)
 
-    # 结束计时
     end_time = time.time()
 
-    # 输出结果
     print(f"共找到 {len(solutions)} 个解")
-    print(f"程序运行时间: {end_time - start_time:.4f} 秒")
+    print(f"程序运行时间: {end_time - start_time:.6f} 秒")
 
-    # 显示前几个解的黑白图像
     for sol in solutions:
-        # 将 '#' 显示为黑色（1），'.' 或 'X' 显示为白色（0）
         img = [[1 if ch == '#' else 0 for ch in row] for row in sol]
         plt.imshow(img, cmap="gray_r", interpolation="none")
         plt.axis('off')

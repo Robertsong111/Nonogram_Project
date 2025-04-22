@@ -79,9 +79,9 @@ def process_puzzle_files(puzzle_dir, max_puzzles=50):
         # 使用不同的求解器
         solvers = [
             ("CP-SAT", solve_with_cp_sat),
-            ("SAT", solve_with_sat),
-            ("Time Backtracking", solve_with_time_backtracking),
-            ("Constraint Propagation", solve_with_constraint_propagation)
+            #("SAT", solve_with_sat),
+            #("Time Backtracking", solve_with_time_backtracking),
+            #("Constraint Propagation", solve_with_constraint_propagation)
         ]
 
         for solver_name, solver_func in solvers:
@@ -172,4 +172,4 @@ def compare_solvers(puzzle_dir, max_puzzles=50):
 # 示例调用
 if __name__ == "__main__":
     puzzle_dir = "./mnist_nonograms"  # 设定谜题存储的目录路径
-    compare_solvers(puzzle_dir, max_puzzles=500)  # 随机挑选50个谜题并进行比较
+    compare_solvers(puzzle_dir, max_puzzles=5000)  # 随机挑选50个谜题并进行比较

@@ -130,12 +130,12 @@ def display_solutions(solutions, max_display=5):
         plt.show()
 
 if __name__ == "__main__":
-    row_constraints = [[1], [1], [1], [1], [1], [1]]
-    col_constraints = [[1], [1], [1], [1], [1], [1]]
+    row_constraints = [[1], [1], [1], [1], [1], [1], [1]]
+    col_constraints = [[1], [1], [1], [1], [1], [1], [1]]
     solver = NonogramSolverWithCP(row_constraints, col_constraints)
     start_time = time.time()
     solutions = solver.solve()
     end_time = time.time()
     print(f"共找到 {len(solutions)} 个解")
-    print(f"求解耗时: {end_time - start_time:.4f} 秒")
+    print(f"求解耗时: {end_time - start_time:.8f} 秒")
     display_solutions(solutions)

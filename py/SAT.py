@@ -254,8 +254,8 @@ if __name__ == "__main__":
     sys.setrecursionlimit(10**7)
 
     # 举例: 5行×5列
-    row_constraints = [[1], [1], [1], [1], [1], [1]]
-    col_constraints = [[1], [1], [1], [1], [1], [1]]
+    row_constraints = [[1], [1], [1], [1], [1], [1], [1]]
+    col_constraints = [[1], [1], [1], [1], [1], [1], [1]]
     m = len(row_constraints)
     n = len(col_constraints)
 

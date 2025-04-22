@@ -168,8 +168,8 @@ if __name__=="__main__":
     # b) 随机选择1000个示例（您可以调整 num_samples 至 60000）
     bulk_mnist_to_nonogram(
         mnist_dataset=mnist_train,
-        num_samples=2000,  # 随机选择1000个样本
-        final_size=(12, 12),   # 可以根据需要调整输出谜题的格子尺寸
+        num_samples=2000,
+        final_size=(25,25),   # 可以根据需要调整输出谜题的格子尺寸
         out_dir="./mnist_nonograms",
         out_img_dir="./mnist_nonograms_images",
         threshold=128

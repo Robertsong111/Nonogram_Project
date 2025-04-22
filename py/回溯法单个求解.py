@@ -57,14 +57,14 @@ class NonogramSolver:
 if __name__ == "__main__":
     start_time = time.time()
 
-    row_constraints = [[1], [1], [1], [1], [1]]
-    col_constraints = [[1], [1], [1], [1], [1]]
+    row_constraints = [[1], [1], [1], [1], [1], [1]]
+    col_constraints = [[1], [1], [1], [1], [1], [1]]
 
     solver = NonogramSolver(row_constraints, col_constraints)
     solver.solve()
     solutions = solver.get_solutions()
     end_time = time.time()
-    print(f"程序运行时间: {end_time - start_time:.4f} 秒")
+    print(f"程序运行时间: {end_time - start_time:.6f} 秒")
     print(f"共找到 {len(solutions)} 个解：")
     for solution in solutions:
         # imshow 黑白反转，1 表示黑格（显示为黑）
